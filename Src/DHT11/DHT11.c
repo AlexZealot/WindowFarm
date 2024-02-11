@@ -1,0 +1,173 @@
+/*
+ * DHT11.c
+ *
+ *  Created on: Nov 15, 2023
+ *      Author: Алексей
+ */
+
+#include "DHT11/DHT11.h"
+
+void	setDHT_output(A_DHT11_TypeDef * dht){
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+	GPIO_InitStruct.Pin = dht->pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+	HAL_GPIO_Init(dht->port, &GPIO_InitStruct);
+}
+
+void	setDHT_input(A_DHT11_TypeDef * dht){
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+	GPIO_InitStruct.Pin = dht->pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+	HAL_GPIO_Init(dht->port, &GPIO_InitStruct);
+}
+
+/*
+ * @brief инициализация структуры A_DHT11_TypeDef
+ */
+void dht11_init(A_DHT11_TypeDef * dht, GPIO_TypeDef * port, uint16_t pin){
+	dht->port = port;
+	dht->pin = pin;
+	dht->T = 0.0f;
+	dht->H = 0.0f;
+	dht->lastRequest = 0;
+	//setDHT_input(dht);
+}
+
+/*
+ * @brief чтение данных из DHT11
+ *		Приостанавливает выполнение программы на время чтения
+ */
+void dht11_read(A_DHT11_TypeDef * dht){
+	if (HAL_GetTick() - dht->lastRequest < 2000) return;
+
+	uint32_t	started = HAL_GetTick();
+
+	uint8_t bitIdx = 0;
+	uint32_t rawData = 0;
+	uint8_t 		hH;
+	uint8_t 		lH;
+	uint8_t 		hT;
+	uint8_t 		lT;
+	uint8_t			parity = 0;
+
+	setDHT_output(dht);
+	bitIdx = 0;
+	HAL_GPIO_WritePin(dht->port, dht->pin, GPIO_PIN_RESET);
+	HAL_Delay(18);//datasheet. 18мс
+	HAL_GPIO_WritePin(dht->port, dht->pin, GPIO_PIN_SET);
+	setDHT_input(dht);
+	while (HAL_GPIO_ReadPin(dht->port, dht->pin) == GPIO_PIN_SET){
+		if (HAL_GetTick() - started > DHT_SAFE_DELAY) return;
+	}
+	while (HAL_GPIO_ReadPin(dht->port, dht->pin) == GPIO_PIN_RESET){
+		if (HAL_GetTick() - started > DHT_SAFE_DELAY) return;
+	}
+	while (HAL_GPIO_ReadPin(dht->port, dht->pin) == GPIO_PIN_SET){
+		if (HAL_GetTick() - started > DHT_SAFE_DELAY) return;
+	}
+	while (bitIdx < 40){
+		uint32_t lv = 0;
+		uint32_t hv = 0;
+		while (HAL_GPIO_ReadPin(dht->port, dht->pin) == GPIO_PIN_RESET){
+			if (HAL_GetTick() - started > DHT_SAFE_DELAY) return;
+			lv++;
+		}
+		while (HAL_GPIO_ReadPin(dht->port, dht->pin) == GPIO_PIN_SET)  {
+			if (HAL_GetTick() - started > DHT_SAFE_DELAY) return;
+			hv++;
+		}
+		if (bitIdx < 32){
+			if (hv>lv){
+				rawData |= (1UL << (31 - bitIdx));
+			}
+		} else {
+			if (hv>lv){
+				parity |= (1UL << (7 - (bitIdx - 32)));
+			}
+		}
+		bitIdx++;
+		if (HAL_GetTick() - started > DHT_SAFE_DELAY) return;
+	}
+	lT = rawData & 0xFF;
+	hT = (rawData >> 8) & 0xFF;
+	lH = (rawData >> 16) & 0xFF;
+	hH = (rawData >> 24) & 0xFF;
+
+	if ((uint8_t)(lT + hT + lH + hH) == parity){
+		dht->T = (float)hT + (float)lT/10.0f;
+		dht->H = (float)hH + (float)lH/10.0f;
+
+		dht->lT = lT;
+		dht->hT = hT;
+		dht->lH = lH;
+		dht->hH = hH;
+	}
+
+	dht->lastRequest = HAL_GetTick();
+}
+
+/*
+ * @brief чтение данных из DHT11
+ *		Приостанавливает выполнение программы на время чтения
+ *		Чтение небезопасно, есть риск зависания
+ */
+void dht11_read_unsafe(A_DHT11_TypeDef * dht){
+	if (HAL_GetTick() - dht->lastRequest < 2000) return;
+
+	uint8_t bitIdx = 0;
+	uint32_t rawData = 0;
+	uint8_t 		hH;
+	uint8_t 		lH;
+	uint8_t 		hT;
+	uint8_t 		lT;
+	uint8_t			parity = 0;
+
+	setDHT_output(dht);
+	bitIdx = 0;
+	HAL_GPIO_WritePin(dht->port, dht->pin, GPIO_PIN_RESET);
+	HAL_Delay(18);//wait for 18+ ms
+	HAL_GPIO_WritePin(dht->port, dht->pin, GPIO_PIN_SET);
+	setDHT_input(dht);
+	while (HAL_GPIO_ReadPin(dht->port, dht->pin) == GPIO_PIN_SET){}
+	while (HAL_GPIO_ReadPin(dht->port, dht->pin) == GPIO_PIN_RESET){}
+	while (HAL_GPIO_ReadPin(dht->port, dht->pin) == GPIO_PIN_SET){}
+	while (bitIdx < 40){
+		uint32_t lv = 0;
+		uint32_t hv = 0;
+		while (HAL_GPIO_ReadPin(dht->port, dht->pin) == GPIO_PIN_RESET){
+			lv++;
+		}
+		while (HAL_GPIO_ReadPin(dht->port, dht->pin) == GPIO_PIN_SET)  {
+			hv++;
+		}
+		if (bitIdx < 32){
+			if (hv>lv){
+				rawData |= (1UL << (31 - bitIdx));
+			}
+		} else {
+			if (hv>lv){
+				parity |= (1UL << (7 - (bitIdx - 32)));
+			}
+		}
+		bitIdx++;
+	}
+	lT = rawData & 0xFF;
+	hT = (rawData >> 8) & 0xFF;
+	lH = (rawData >> 16) & 0xFF;
+	hH = (rawData >> 24) & 0xFF;
+
+	if ((uint8_t)(lT + hT + lH + hH) == parity){
+		dht->T = (float)hT + (float)lT/10.0f;
+		dht->H = (float)hH + (float)lH/10.0f;
+
+		dht->lT = lT;
+		dht->hT = hT;
+		dht->lH = lH;
+		dht->hH = hH;
+	}
+
+	dht->lastRequest = HAL_GetTick();
+}
