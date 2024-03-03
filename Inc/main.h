@@ -63,11 +63,13 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 uint32_t	analogRead(adc_pin_t pin);
-void	ADC_Select_CH_HUM1(void);
-void	ADC_Select_CH_HUM2(void);
-void	ADC_Select_CH_LIGHT_SENSOR(void);
-void	WaterCheck(void);
-void	UpdDisplay(void);
+void		ADC_Select_CH_HUM1(void);
+void		ADC_Select_CH_HUM2(void);
+void		ADC_Select_CH_LIGHT_SENSOR(void);
+void		WaterCheck(void);
+void		UpdDisplay(void);
+uint8_t 	isItDayNow();
+uint32_t 	timeLeftTo(uint8_t day);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
@@ -94,12 +96,13 @@ void	UpdDisplay(void);
 #define	DISPLAY_DELAY		5000			//Частота смены данных дисплея
 #define	DISPL_MODE_DHT		0				//Режим дисплея - данные с DHT11
 #define DISPL_MODE_HUM		1				//Режим дисплея - данные с датчиков влажности в попугаях
+#define DISPL_MODE_TIME		2				//Режим дисплея - часы
 
-#define	PUMP_1_LIMIT_ON		2500			//Порог включения помпы 1
-#define PUMP_1_LIMIT_OFF	2000			//Порог выключения помпы 1
+#define	PUMP_1_LIMIT_ON		1750			//Порог включения помпы 1
+#define PUMP_1_LIMIT_OFF	1500			//Порог выключения помпы 1
 
-#define	PUMP_2_LIMIT_ON		2500			//Порог включения помпы 2
-#define PUMP_2_LIMIT_OFF	2000			//Порог выключения помпы 2
+#define	PUMP_2_LIMIT_ON		1850			//Порог включения помпы 2
+#define PUMP_2_LIMIT_OFF	1600			//Порог выключения помпы 2
 
 #ifndef __DEBUG_HUM__
 	#define	PUMP_MAX_TIME_ON	4000			//Максимальное время работы помпы
@@ -110,6 +113,12 @@ void	UpdDisplay(void);
 #endif
 
 #define	HUM_DELAY			1000			//как часто считываем данные с датчиков влажности почвы
+
+#define DAY_H_START			6				//День начинается в 6:00
+#define DAY_M_START			0				//День начинается в 6:00
+#define DAY_H_END			21				//День закончится в 22:00
+#define DAY_M_END			59				//День закончится в 22:00
+#define USE_RTC
 
 //#define NO_HUM1_SENSOR
 

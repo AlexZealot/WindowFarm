@@ -20,6 +20,7 @@
 #include "main.h"
 #include "adc.h"
 #include "i2c.h"
+#include "rtc.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -74,8 +75,13 @@ uint32_t				pump_2_stopped_at = 0;	//помпа 2 отлючилась в это
 //Обработчик света
 uint8_t					light_state = 0;		//0 = ночь; 1 = день
 uint32_t				light_started = 0;		//когда запустился текущий период дня
+#ifndef USE_RTC
 uint8_t					light_cycle = 0;		//Запущен ли цикл работы с освещением
+#endif
 uint32_t				light_time_left = 0;	//Сколько осталось до переключения день/ночь
+
+//RTC
+RTC_TimeTypeDef	sTime = {0,};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -119,6 +125,7 @@ int main(void)
   MX_GPIO_Init();
   MX_ADC1_Init();
   MX_I2C1_Init();
+  MX_RTC_Init();
   /* USER CODE BEGIN 2 */
   HAL_GPIO_WritePin(WATER_1_GPIO_Port, WATER_1_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(WATER_2_GPIO_Port, WATER_2_Pin, GPIO_PIN_RESET);
@@ -138,21 +145,15 @@ int main(void)
   hum1 = analogRead(ADC_HUM_1);
   hum2 = analogRead(ADC_HUM_2);
   light_val = analogRead(ADC_PHOTO);
+#ifdef USE_RTC
+  light_state = isItDayNow();
+#else
   light_state = light_val < LIGHT_SW_OFF?1:0;
+#endif
 
   d_struct.mode = DISPL_MODE_DHT;
   hum_time = light_started = lightTick = d_struct.startedTime = HAL_GetTick();
 
-  /*display.CurrentX = 5;
-  display.CurrentY = 6;
-  sprintf(display_str, "T: %u.%u L: %u %s", dht.hT, dht.lT, light_val, light_state?"D":"N");
-  ssd1306_put_string(&display, &Font_6x8, display_str, 0xFF);
-
-  display.CurrentX = 5;
-  display.CurrentY = 16;
-  sprintf(display_str, "H: %u.%u%%", dht.hH, dht.lH);
-  ssd1306_put_string(&display, &Font_6x8, display_str, 0xFF);
-  ssd1306_show(&display);*/
   UpdDisplay();
   while (1)
   {
@@ -168,21 +169,12 @@ int main(void)
 
 	  /*Переключаем дисплей каждые DISPLAY_DELAY мс*/
 	  if (HAL_GetTick() - d_struct.startedTime > DISPLAY_DELAY){
-		  d_struct.mode = 1 - d_struct.mode;
+		  d_struct.mode = (d_struct.mode + 1)%3;
 		  UpdDisplay();
 		  d_struct.startedTime = HAL_GetTick();
 	  }
 
-	  /**Обработка света
-	   * Алгоритм
-	   * ищем моент перехода из состояния "ночь" в состояние "день" и наоборот.
-	   * Отсчитываем с этого момента LIGHT_T_ON (день) или LIGHT_T_OFF (ночь) мс для переключения режима.
-	   *
-	   * Днём анализируем, больше ли показание датчика, чем LIGHT_SW_ON. если да - то включаем подсветку. Если меньше - выключаем.
-	   * Ночью подсветка выключена
-	   *
-	   * TODO: откалибровать значения датчика уровня света (LIGHT_SW_ON и LIGHT_SW_OFF) в зависимости от положения датчика и ленты с диодами
-	   */
+#ifndef USE_RTC
 	  if (light_cycle){
 		  if (HAL_GetTick() - lightTick > LIGHT_DELAY){
 			  light_val = analogRead(ADC_PHOTO);
@@ -237,6 +229,28 @@ int main(void)
 			  lightTick = HAL_GetTick();
 		  }
 	  }
+#else
+	  if (HAL_GetTick() - lightTick > LIGHT_DELAY){
+		  light_val = analogRead(ADC_PHOTO);
+
+		  if (d_struct.mode == DISPL_MODE_DHT)
+			  UpdDisplay();
+
+		  light_state = isItDayNow();
+
+		  if (light_state){ //день
+			  if (light_val < LIGHT_SW_OFF){
+				  LEDS_GPIO_Port->BSRR = (uint32_t)LEDS_Pin << 16u;
+			  }
+			  if (light_val > LIGHT_SW_ON){
+				  LEDS_GPIO_Port->BSRR = (uint32_t)LEDS_Pin;
+			  }
+		  } else { // ночь
+			  LEDS_GPIO_Port->BSRR = (uint32_t)LEDS_Pin << 16u;
+		  }
+		  lightTick = HAL_GetTick();
+	  }
+#endif
 
     /* USER CODE END WHILE */
 
@@ -258,9 +272,10 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE|RCC_OSCILLATORTYPE_LSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
+  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
@@ -283,7 +298,8 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_ADC;
+  PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
   PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV8;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
@@ -316,6 +332,9 @@ void	ADC_Select_CH_LIGHT_SENSOR(void){
 	HAL_ADC_ConfigChannel(&hadc1, &sConfig);
 }
 
+//@brief  Для простоты понимания названо аналогично ардуиновской функции работы с АЦП. Внимание, функция блокирующая выполнение остальной программы
+//@param  pin С какого пина читать значения. ADC_HUM_1, ADC_HUM_2, ADC_PHOTO
+//@return  Данные АЦП
 uint32_t	analogRead(adc_pin_t pin){
 	ADC_ChannelConfTypeDef sConfig = {0};
 	sConfig.Rank = ADC_REGULAR_RANK_1;
@@ -397,6 +416,7 @@ void	UpdDisplay(void){
 
 		  	display.CurrentX = 5;
 		  	display.CurrentY = 16;
+#ifndef USE_RTC
 		  	if (!light_cycle)
 		  		sprintf(display_str, "H: %u.%u%%", dht.hH, dht.lH);
 		  	else {
@@ -405,6 +425,10 @@ void	UpdDisplay(void){
 		  		light_time_left /= 60000;
 		  		sprintf(display_str, "H: %u.%u%% TL: %lu m", dht.hH, dht.lH, light_time_left);
 		  	}
+#else
+		  	light_time_left = timeLeftTo(isItDayNow());
+		  	sprintf(display_str, "H: %u.%u%% TL: %lu m", dht.hH, dht.lH, light_time_left);
+#endif
 		  	ssd1306_put_string(&display, &Font_6x8, display_str, 0xFF);
 		  	ssd1306_show(&display);
 		  	break;
@@ -423,6 +447,38 @@ void	UpdDisplay(void){
 	  		ssd1306_put_string(&display, &Font_6x8, display_str, 0xFF);
 	  		ssd1306_show(&display);
 		  	break;
+
+	  	case DISPL_MODE_TIME:
+	  		HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+	  		ssd1306_clear(&display, 0);
+
+	  		display.CurrentX = 15;
+	  		display.CurrentY = 11;
+	  		sprintf(display_str, "%02u:%02u (%s)", sTime.Hours, sTime.Minutes, isItDayNow()?"DAY":"NIGHT");
+	  		ssd1306_put_string(&display, &Font_6x8, display_str, 0xFF);
+	  		ssd1306_show(&display);
+	  		break;
+	}
+}
+
+uint8_t 	isItDayNow(){
+	HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+	return ((sTime.Hours >= DAY_H_START) && (sTime.Minutes >= DAY_M_START)) && ((sTime.Hours < DAY_H_END) || ((sTime.Hours == DAY_H_END) && (sTime.Minutes <= DAY_M_END)))?1:0;
+}
+
+uint32_t 	timeLeftTo(uint8_t day){
+	HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+	if (day){
+		if (sTime.Hours != (DAY_H_END-1))
+			return (60 - sTime.Minutes) + DAY_M_END + (DAY_H_END - (sTime.Hours + 1)) * 60;
+		else
+			return (60 - sTime.Minutes);
+	} else {
+		if (sTime.Hours > DAY_H_START) {
+			return ((60 - sTime.Minutes) + (24 - (sTime.Hours + 1)) * 60 + (DAY_H_START * 60) + DAY_M_START);
+		} else {
+			return ((60 - sTime.Minutes) + DAY_M_START + (DAY_H_START - (sTime.Hours + 1)) * 60);
+		}
 	}
 }
 /* USER CODE END 4 */
