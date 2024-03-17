@@ -4,16 +4,6 @@
   * @file           : main.c
   * @brief          : Main program body
   ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2023 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
@@ -471,8 +461,12 @@ uint32_t 	timeLeftTo(uint8_t day){
 	if (day){
 		if (sTime.Hours != (DAY_H_END-1))
 			return (60 - sTime.Minutes) + DAY_M_END + (DAY_H_END - (sTime.Hours + 1)) * 60;
-		else
-			return (60 - sTime.Minutes);
+		else {
+			if (DAY_M_END == 0)
+				return (60 - sTime.Minutes);
+			else
+				return (60 - sTime.Minutes) + DAY_M_END;
+		}
 	} else {
 		if (sTime.Hours > DAY_H_START) {
 			return ((60 - sTime.Minutes) + (24 - (sTime.Hours + 1)) * 60 + (DAY_H_START * 60) + DAY_M_START);

@@ -5,16 +5,6 @@
   * @brief          : Header for main.c file.
   *                   This file contains the common defines of the application.
   ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2023 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
   */
 /* USER CODE END Header */
 
@@ -101,15 +91,15 @@ uint32_t 	timeLeftTo(uint8_t day);
 #define	PUMP_1_LIMIT_ON		1750			//Порог включения помпы 1
 #define PUMP_1_LIMIT_OFF	1500			//Порог выключения помпы 1
 
-#define	PUMP_2_LIMIT_ON		1850			//Порог включения помпы 2
-#define PUMP_2_LIMIT_OFF	1600			//Порог выключения помпы 2
+#define	PUMP_2_LIMIT_ON		1750			//Порог включения помпы 2
+#define PUMP_2_LIMIT_OFF	1500			//Порог выключения помпы 2
 
 #ifndef __DEBUG_HUM__
-	#define	PUMP_MAX_TIME_ON	4000			//Максимальное время работы помпы
-	#define PUMP_MIN_TIME_OFF	180000			//Минимальное время работы помпы между двумя включениями
+	#define	PUMP_MAX_TIME_ON	4000		//Максимальное время работы помпы
+	#define PUMP_MIN_TIME_OFF	180000		//Минимальное время работы помпы между двумя включениями
 #else
-	#define	PUMP_MAX_TIME_ON	1000			//Максимальное время работы помпы
-	#define PUMP_MIN_TIME_OFF	30000			//Минимальное время работы помпы между двумя включениями
+	#define	PUMP_MAX_TIME_ON	1000		//Максимальное время работы помпы
+	#define PUMP_MIN_TIME_OFF	30000		//Минимальное время работы помпы между двумя включениями
 #endif
 
 #define	HUM_DELAY			1000			//как часто считываем данные с датчиков влажности почвы
